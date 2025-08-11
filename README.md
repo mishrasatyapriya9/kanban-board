@@ -1,12 +1,51 @@
-# React + Vite
+## MYKANABN PRO https://ticket-management-satya.netlify.app/
+## 🚀 Features Implemented
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+### 📌 Core Kanban Board Functionalities
+- ✏️ **Create, Read, Update, and Delete (CRUD)** operations for tickets.
+- 🔄 **Drag-and-drop** tickets between columns: `To Do`, `In Progress`, and `Done`.
+- 📱 **Responsive design** optimized for both desktop and mobile devices.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+### 🗂 Ticket Management Enhancements
+- 🔍 **Search bar** in the header to quickly find tickets by title or description.
+- 👤 **Assignment field** – assign tickets to specific team members.
+- ⏳ **Tentative time estimation** for each ticket.
+- 🎯 **Priority levels**:
+  - High – 🔴 Red
+  - Medium – 🟡 Yellow
+  - Low – 🟢 Green
 
-## Expanding the ESLint configuration
+---
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+### 💡 User Experience Improvements
+- ⌨️ **Keyboard shortcut**: Press `N` to quickly create a new ticket.
+- 💾 **Persistent state** using `localStorage` – your board stays the same after refresh.
+- 🌈 **Color-coded priorities** for quick visual recognition.
+- 🎬 **Smooth animations** during drag-and-drop transitions.
+
+---
+
+### 🎨 Additional UI/UX Features
+- 🖌 **Clean and modern UI design** with an intuitive layout.
+- 📐 **Fully responsive board layout** for all screen sizes.
+
+---
+
+# live website link - https://ticket-management-satya.netlify.app/
+
+## WEBSITE VIEW
+Screenshot 2025-08-11 135125.png
+Screenshot 2025-08-11 135918.png
+Screenshot 2025-08-11 135932.png
+Screenshot 2025-08-11 140006.png
+Screenshot 2025-08-11 140111.png
+##
+
+## MOBILE VIEW
+Screenshot 2025-08-11 140244.png
+Screenshot 2025-08-11 140212.png
+Screenshot 2025-08-11 140221.png
+Screenshot 2025-08-11 140231.png
+
