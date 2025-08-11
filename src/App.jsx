@@ -7,14 +7,73 @@ import {
   useSensors,
   PointerSensor,
   DragOverlay,
+  useDroppable,
 } from "@dnd-kit/core";
 import {
   SortableContext,
   verticalListSortingStrategy,
   useSortable,
+  arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import "./styles.css";
+
+// Error Boundary Component
+const ErrorBoundary = ({ children }) => {
+  const [hasError, setHasError] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const handleError = (errorEvent) => {
+      console.error("Global error caught:", errorEvent);
+      setError(errorEvent.error || errorEvent);
+      setHasError(true);
+    };
+
+    const handleUnhandledRejection = (event) => {
+      console.error("Unhandled promise rejection:", event);
+      setError(event.reason);
+      setHasError(true);
+    };
+
+    window.addEventListener('error', handleError);
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+
+    return () => {
+      window.removeEventListener('error', handleError);
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+    };
+  }, []);
+
+  if (hasError) {
+    return (
+      <div className="error-boundary">
+        <div className="error-content">
+          <h1>⚠️ Something went wrong</h1>
+          <p>An error occurred while using the application.</p>
+          {error && (
+            <details>
+              <summary>Error Details</summary>
+              <pre>{error.message || error.toString()}</pre>
+            </details>
+          )}
+          <button 
+            className="btn btn-primary"
+            onClick={() => {
+              setHasError(false);
+              setError(null);
+              window.location.reload();
+            }}
+          >
+            Reload Page
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return children;
+};
 
 // Empty initial columns - no tickets
 const initialColumns = {
@@ -88,18 +147,15 @@ const Ticket = ({ ticket, onEdit, onDelete, onClick }) => {
 
   const handleEditClick = (e) => {
     e.stopPropagation();
-    console.log("Edit button clicked for ticket:", ticket.id); // Debug log
     onEdit(ticket);
   };
 
   const handleDeleteClick = (e) => {
     e.stopPropagation();
-    console.log("Delete button clicked for ticket:", ticket.id); // Debug log
     onDelete(ticket.id, ticket.status);
   };
 
   const handleTicketClick = (e) => {
-    // Don't trigger if clicking on buttons
     if (e.target.closest('.btn-edit') || e.target.closest('.btn-delete')) {
       return;
     }
@@ -169,21 +225,25 @@ const Column = ({ status, tickets, onEdit, onDelete, onTicketClick, onCreateTick
     }
   };
 
+  // Make the column a droppable area
+  const { setNodeRef, isOver } = useDroppable({ id: status });
+
   return (
-    <div className="column" data-status={status} data-column-type="kanban-column">
-      <div className="column-header" data-status={status} data-column-type="kanban-column-header">
+    <div className={`column ${isOver ? 'drag-over' : ''}`} data-status={status} data-column-type="kanban-column">
+      <div className={`column-header ${isOver ? 'drag-over' : ''}`} data-status={status} data-column-type="kanban-column-header">
         <div className="column-title">
           <span className="status-icon">{getStatusIcon(status)}</span>
           <h2 data-status={status}>{status}</h2>
           <span className="ticket-count">{tickets.length}</span>
         </div>
       </div>
-      <div className="column-content" data-status={status} data-column-type="kanban-column-content">
+      <div ref={setNodeRef} className={`column-content ${isOver ? 'drag-over' : ''}`} data-status={status} data-column-type="kanban-column-content">
         <SortableContext
-          items={tickets.map((ticket) => ticket.id)}
+          id={status}
+          items={(tickets || []).filter(Boolean).map((ticket) => ticket.id)}
           strategy={verticalListSortingStrategy}
         >
-          {tickets.map((ticket) => (
+          {(tickets || []).filter(Boolean).map((ticket) => (
             <Ticket
               key={ticket.id}
               ticket={ticket}
@@ -193,7 +253,7 @@ const Column = ({ status, tickets, onEdit, onDelete, onTicketClick, onCreateTick
             />
           ))}
         </SortableContext>
-        {tickets.length === 0 && (
+        {!tickets || tickets.length === 0 ? (
           <div className="empty-column" data-status={status} data-column-type="kanban-empty-column">
             <div className="empty-icon">📝</div>
             <p>No tickets</p>
@@ -201,7 +261,7 @@ const Column = ({ status, tickets, onEdit, onDelete, onTicketClick, onCreateTick
               + Create ticket
             </button>
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );
@@ -415,46 +475,9 @@ const App = () => {
 
   const sensors = useSensors(useSensor(PointerSensor));
 
-  // Custom collision detection for better accuracy
-  const customCollisionDetection = (args) => {
-    // First, let's see what intersections the default collision detection algorithm finds
-    const pointerIntersections = closestCorners(args);
-    
-    if (pointerIntersections.length > 0) {
-      return pointerIntersections;
-    }
-    
-    // If no intersections found, try to find the closest column
-    const { active, droppableRects, droppableContainers } = args;
-    
-    if (active && droppableContainers.length > 0) {
-      // Find the closest column to the pointer
-      let closestContainer = null;
-      let minDistance = Infinity;
-      
-      droppableContainers.forEach((container) => {
-        const rect = droppableRects.get(container.id);
-        if (rect) {
-          const centerX = rect.left + rect.width / 2;
-          const centerY = rect.top + rect.height / 2;
-          const distance = Math.sqrt(
-            Math.pow(centerX - args.active.rect.current.translated.left, 2) +
-            Math.pow(centerY - args.active.rect.current.translated.top, 2)
-          );
-          
-          if (distance < minDistance) {
-            minDistance = distance;
-            closestContainer = container;
-          }
-        }
-      });
-      
-      if (closestContainer) {
-        return [closestContainer];
-      }
-    }
-    
-    return [];
+  // Simplified collision detection that always works
+  const simpleCollisionDetection = (args) => {
+    return closestCenter(args);
   };
 
   useEffect(() => {
@@ -467,41 +490,25 @@ const App = () => {
   };
 
   const handleEditTicket = (ticket) => {
-    console.log("Edit ticket called with:", ticket); // Debug log
-    if (!ticket) {
-      console.error("No ticket provided to edit");
-      return;
-    }
+    if (!ticket) return;
     setEditingTicket(ticket);
     setIsEditModalOpen(true);
   };
 
   const handleTicketClick = (ticket) => {
-    console.log("Ticket clicked:", ticket); // Debug log
-    if (!ticket) {
-      console.error("No ticket provided to view");
-      return;
-    }
+    if (!ticket) return;
     setSelectedTicket(ticket);
     setIsDetailModalOpen(true);
   };
 
   const handleSaveTicket = (ticketData) => {
-    console.log("Save ticket called with:", ticketData); // Debug log
     if (!ticketData || !ticketData.title || !ticketData.assignedTo || !ticketData.tentativeTime) {
-      console.error("Invalid ticket data:", ticketData);
       return;
     }
-    
     if (editingTicket) {
-      // Update existing ticket
       setColumns((prev) => {
         const newColumns = { ...prev };
-        // Remove from old status
-        newColumns[editingTicket.status] = newColumns[editingTicket.status].filter(
-          (t) => t.id !== editingTicket.id
-        );
-        // Add to new status
+        newColumns[editingTicket.status] = newColumns[editingTicket.status].filter((t) => t.id !== editingTicket.id);
         const updatedTicket = { ...editingTicket, ...ticketData };
         newColumns[ticketData.status] = [...(newColumns[ticketData.status] || []), updatedTicket];
         return newColumns;
@@ -509,7 +516,6 @@ const App = () => {
       setEditingTicket(null);
       setIsEditModalOpen(false);
     } else {
-      // Create new ticket
       const newTicket = {
         id: Date.now().toString(),
         ...ticketData,
@@ -524,11 +530,7 @@ const App = () => {
   };
 
   const handleDeleteTicket = (id, status) => {
-    console.log("Delete ticket called with:", id, status); // Debug log
-    if (!id || !status) {
-      console.error("Invalid delete parameters:", { id, status });
-      return;
-    }
+    if (!id || !status) return;
     setColumns((prev) => ({
       ...prev,
       [status]: prev[status].filter((ticket) => ticket.id !== id),
@@ -536,164 +538,67 @@ const App = () => {
   };
 
   const handleDragStart = (event) => {
-    const { active } = event;
-    console.log("Drag start:", active.id);
-    
-    // Find the ticket being dragged
-    const ticket = Object.values(columns).flat().find(t => t.id === active.id);
-    setDraggedTicket(ticket);
-    
-    // Add visual feedback to the dragged element
-    const draggedElement = document.querySelector(`[data-id="${active.id}"]`);
-    if (draggedElement) {
-      draggedElement.classList.add('dragging');
-    }
+    try {
+      const { active } = event;
+      const ticket = Object.values(columns).flat().find(t => t.id === active.id);
+      setDraggedTicket(ticket);
+      const draggedElement = document.querySelector(`[data-id="${active.id}"]`);
+      if (draggedElement) draggedElement.classList.add('dragging');
+    } catch {}
   };
 
   const handleDragOver = (event) => {
-    const { over } = event;
-    if (!over) return;
-
-    // Remove all drag-over classes
-    document.querySelectorAll('.drag-over').forEach(el => {
-      el.classList.remove('drag-over');
-    });
-
-    // Add drag-over class to the target column
-    const targetElement = over.target;
-    let columnElement = null;
-
-    // Find the column element
-    if (targetElement.dataset && targetElement.dataset.status) {
-      columnElement = targetElement.closest('.column');
-    } else {
-      columnElement = targetElement.closest('.column');
-    }
-
-    if (columnElement) {
-      columnElement.classList.add('drag-over');
-      const header = columnElement.querySelector('.column-header');
-      const content = columnElement.querySelector('.column-content');
-      if (header) header.classList.add('drag-over');
-      if (content) content.classList.add('drag-over');
-    }
+    try {
+      const { over } = event;
+      if (!over || !over.id) return;
+      // Visual highlighting is handled via useDroppable isOver state
+    } catch {}
   };
 
   const handleDragEnd = (event) => {
-    const { active, over } = event;
-    console.log("Drag end event:", { active, over }); // Debug log
-    
-    // Clear dragged ticket state
-    setDraggedTicket(null);
-    
-    // Remove all drag-over classes
-    document.querySelectorAll('.drag-over').forEach(el => {
-      el.classList.remove('drag-over');
-    });
-
-    // Remove dragging class from the dragged element
-    const draggedElement = document.querySelector(`[data-id="${active.id}"]`);
-    if (draggedElement) {
-      draggedElement.classList.remove('dragging');
-    }
-    
-    if (!over) return;
-
-    const activeId = active.id;
-    const overId = over.id;
-
-    console.log("Active ID:", activeId, "Over ID:", overId); // Debug log
-
-    // Find source column
-    const sourceStatus = Object.keys(columns).find((status) =>
-      columns[status].some((ticket) => ticket.id === activeId)
-    );
-    
-    console.log("Source status:", sourceStatus); // Debug log
-    
-    if (!sourceStatus) return;
-
-    // Find destination column - improved detection
-    let destinationStatus = null;
-    
-    // Method 1: Check if dropping directly on a column status
-    if (Object.keys(columns).includes(overId)) {
-      destinationStatus = overId;
-    } else {
-      // Method 2: Check if dropping on a ticket in another column
-      destinationStatus = Object.keys(columns).find((status) =>
-        columns[status].some((ticket) => ticket.id === overId)
-      );
-      
-      // Method 3: Check if dropping on column content or header using DOM traversal
-      if (!destinationStatus) {
-        const targetElement = over.target;
-        console.log("Target element:", targetElement); // Debug log
-        
-        // Traverse up the DOM to find column data
-        let currentElement = targetElement;
-        while (currentElement && !destinationStatus) {
-          if (currentElement.dataset && currentElement.dataset.status) {
-            destinationStatus = currentElement.dataset.status;
-            console.log("Found status from dataset:", destinationStatus); // Debug log
-            break;
-          }
-          currentElement = currentElement.parentElement;
-        }
-        
-        // Method 4: Check if dropping on empty column area
-        if (!destinationStatus) {
-          const columnElement = targetElement.closest('.column');
-          if (columnElement) {
-            destinationStatus = columnElement.dataset.status;
-            console.log("Found status from column element:", destinationStatus); // Debug log
-          }
-        }
+    try {
+      const { active, over } = event;
+      setDraggedTicket(null);
+      if (active && active.id) {
+        const draggedElement = document.querySelector(`[data-id="${active.id}"]`);
+        if (draggedElement) draggedElement.classList.remove('dragging');
       }
-    }
+      if (!over) return;
 
-    console.log("Final destination status:", destinationStatus); // Debug log
-    
-    if (!destinationStatus) {
-      console.log("Could not determine destination status"); // Debug log
-      return;
-    }
+      const activeId = active.id;
+      const overId = over.id;
 
-    const sourceTickets = [...(columns[sourceStatus] || [])];
-    const ticket = sourceTickets.find((t) => t.id === activeId);
+      // Use containerIds from dnd-kit to detect source/destination reliably
+      const sourceStatus = active.data?.current?.sortable?.containerId;
+      const destinationStatus = over.data?.current?.sortable?.containerId || (Object.keys(columns).includes(overId) ? overId : null);
 
-    if (!ticket) return;
+      if (!sourceStatus || !destinationStatus) return;
 
-    if (sourceStatus === destinationStatus) {
-      // Reorder within the same column
-      const newTickets = [...sourceTickets];
-      const oldIndex = sourceTickets.findIndex((t) => t.id === activeId);
-      const newIndex = sourceTickets.findIndex((t) => t.id === overId);
-      
-      if (newIndex === -1) {
-        // If dropping on column header, add to end
-        newTickets.splice(oldIndex, 1);
-        newTickets.push(ticket);
-      } else {
-        // Reorder within column
-        newTickets.splice(oldIndex, 1);
-        newTickets.splice(newIndex, 0, ticket);
+      if (sourceStatus === destinationStatus) {
+        const sourceItems = columns[sourceStatus] || [];
+        const oldIndex = sourceItems.findIndex((t) => t.id === activeId);
+        const newIndexRaw = sourceItems.findIndex((t) => t.id === overId);
+        const newIndex = newIndexRaw === -1 ? sourceItems.length - 1 : newIndexRaw;
+        if (oldIndex === -1) return;
+        const updated = arrayMove(sourceItems, oldIndex, newIndex);
+        setColumns({ ...columns, [sourceStatus]: updated });
+        return;
       }
-      
-      setColumns({ ...columns, [sourceStatus]: newTickets });
-    } else {
-      // Move to a different column
-      const sourceTickets = [...(columns[sourceStatus] || [])];
-      const destTickets = [...(columns[destinationStatus] || [])];
-      const ticketIndex = sourceTickets.findIndex((t) => t.id === activeId);
-      sourceTickets.splice(ticketIndex, 1);
-      destTickets.push({ ...ticket, status: destinationStatus });
+
+      // Move to different column
+      const sourceItems = [...(columns[sourceStatus] || [])];
+      const destItems = [...(columns[destinationStatus] || [])];
+      const movingIndex = sourceItems.findIndex((t) => t.id === activeId);
+      if (movingIndex === -1) return;
+      const [moving] = sourceItems.splice(movingIndex, 1);
+      destItems.push({ ...moving, status: destinationStatus });
+
       setColumns({
         ...columns,
-        [sourceStatus]: sourceTickets,
-        [destinationStatus]: destTickets,
+        [sourceStatus]: sourceItems,
+        [destinationStatus]: destItems,
       });
-    }
+    } catch {}
   };
 
   const handleClearBoard = () => {
@@ -733,86 +638,88 @@ const App = () => {
   };
 
   return (
-    <div className="app">
-      <Header onClearBoard={handleClearBoard} onAddTestTicket={addTestTicket} />
-      <main className="main-content">
-        <div className="board-container">
-          <DndContext
-            sensors={sensors}
-            collisionDetection={customCollisionDetection}
-            onDragEnd={handleDragEnd}
-            onDragStart={handleDragStart}
-            onDragOver={handleDragOver}
-          >
-            <div className="board">
-              {Object.entries(columns).map(([status, tickets]) => (
-                <Column
-                  key={status}
-                  status={status}
-                  tickets={tickets || []}
-                  onEdit={handleEditTicket}
-                  onDelete={handleDeleteTicket}
-                  onTicketClick={handleTicketClick}
-                  onCreateTicket={handleCreateTicket}
-                />
-              ))}
-            </div>
-            
-            <DragOverlay>
-              {draggedTicket ? (
-                <div className="ticket drag-overlay">
-                  <div className="ticket-header">
-                    <span className="ticket-id">#{draggedTicket.id}</span>
-                    <span 
-                      className="priority-badge"
-                      style={{ 
-                        backgroundColor: (() => {
-                          switch (draggedTicket.priority) {
-                            case "High": return "#dc3545";
-                            case "Medium": return "#ffc107";
-                            case "Low": return "#28a745";
-                            default: return "#6c757d";
-                          }
-                        })()
-                      }}
-                    >
-                      {draggedTicket.priority}
-                    </span>
+    <ErrorBoundary>
+      <div className="app">
+        <Header onClearBoard={handleClearBoard} onAddTestTicket={addTestTicket} />
+        <main className="main-content">
+          <div className="board-container">
+            <DndContext
+              sensors={sensors}
+              collisionDetection={simpleCollisionDetection}
+              onDragEnd={handleDragEnd}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+            >
+              <div className="board">
+                {Object.entries(columns).map(([status, tickets]) => (
+                  <Column
+                    key={status}
+                    status={status}
+                    tickets={tickets || []}
+                    onEdit={handleEditTicket}
+                    onDelete={handleDeleteTicket}
+                    onTicketClick={handleTicketClick}
+                    onCreateTicket={handleCreateTicket}
+                  />
+                ))}
+              </div>
+              
+              <DragOverlay>
+                {draggedTicket ? (
+                  <div className="ticket drag-overlay">
+                    <div className="ticket-header">
+                      <span className="ticket-id">#{draggedTicket.id}</span>
+                      <span 
+                        className="priority-badge"
+                        style={{ 
+                          backgroundColor: (() => {
+                            switch (draggedTicket.priority) {
+                              case "High": return "#dc3545";
+                              case "Medium": return "#ffc107";
+                              case "Low": return "#28a745";
+                              default: return "#6c757d";
+                            }
+                          })()
+                        }}
+                      >
+                        {draggedTicket.priority}
+                      </span>
+                    </div>
+                    <h3 className="ticket-title">{draggedTicket.title}</h3>
+                    <p className="ticket-description">{draggedTicket.description}</p>
                   </div>
-                  <h3 className="ticket-title">{draggedTicket.title}</h3>
-                  <p className="ticket-description">{draggedTicket.description}</p>
-                </div>
-              ) : null}
-            </DragOverlay>
-          </DndContext>
-        </div>
-      </main>
+                ) : null}
+              </DragOverlay>
+            </DndContext>
+          </div>
+        </main>
 
-      {/* Create Ticket Modal */}
-      <TicketModal
-        isOpen={isCreateModalOpen}
-        onClose={closeCreateModal}
-        ticket={null}
-        onSave={handleSaveTicket}
-        isEditing={false}
-      />
+        {/* Create Ticket Modal */}
+        <TicketModal
+          isOpen={isCreateModalOpen}
+          onClose={closeCreateModal}
+          ticket={null}
+          onSave={handleSaveTicket}
+          isEditing={false}
+        />
 
-      {/* Edit Ticket Modal */}
-      <TicketModal
-        isOpen={isEditModalOpen}
-        onClose={closeEditModal}
-        ticket={editingTicket}
-        onSave={handleSaveTicket}
-        isEditing={true}
-      />
+        {/* Edit Ticket Modal */}
+        <TicketModal
+          isOpen={isEditModalOpen}
+          onClose={closeEditModal}
+          ticket={editingTicket}
+          onSave={handleSaveTicket}
+          isEditing={true}
+        />
 
-      {/* Ticket Detail Modal */}
-      <TicketDetailModal
-        isOpen={isDetailModalOpen}
-        onClose={closeDetailModal}
-        ticket={selectedTicket}
-      />
-    </div>
+        {/* Ticket Detail Modal */}
+        <TicketDetailModal
+          isOpen={isDetailModalOpen}
+          onClose={closeDetailModal}
+          ticket={selectedTicket}
+        />
+      </div>
+    </ErrorBoundary>
   );
 };
 
